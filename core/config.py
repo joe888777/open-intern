@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -39,14 +40,18 @@ class PlatformConfig(BaseModel):
 class LLMConfig(BaseModel):
     provider: str = "claude"  # claude | openai | minimax | ollama
     model: str = "claude-sonnet-4-6"
-    api_key: str = ""  # optional, can also use env vars
+    api_key: str = ""  # optional; falls back to ANTHROPIC/OPENAI/MINIMAX_API_KEY env vars
     temperature: float = 0.7
     max_tokens_per_action: int = 4096
     daily_cost_budget_usd: float = 10.0
 
 
 class MemoryConfig(BaseModel):
-    database_url: str = "postgresql://open_intern:open_intern@localhost:5556/open_intern"
+    database_url: str = Field(
+        default_factory=lambda: os.environ.get(
+            "DATABASE_URL", "postgresql://open_intern:open_intern@localhost:5556/open_intern"
+        )
+    )
     embedding_model: str = "text-embedding-3-small"
     max_retrieval_results: int = 10
     importance_decay_days: int = 90
