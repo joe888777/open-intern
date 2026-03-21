@@ -88,7 +88,7 @@ def start(
     console.print(
         Panel.fit(
             "[bold green]Starting open_intern[/bold green]",
-            subtitle="Dashboard: http://localhost:3000 | API: http://localhost:8000 | Ctrl+C to stop",
+            subtitle="Dashboard: localhost:3000 | API: localhost:8000 | Ctrl+C to stop",
         )
     )
 
