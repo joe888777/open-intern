@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies
 COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir ".[all]" fastapi uvicorn
+RUN pip install --no-cache-dir ".[all]" fastapi uvicorn psycopg2-binary
 
 # Copy source
 COPY . .
@@ -23,4 +23,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["python", "-m", "cli.main", "start", "--web"]
+CMD ["sh", "-c", "alembic upgrade head && python -m cli.main start --web"]
