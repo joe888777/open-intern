@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 
 from core.config import AppConfig, IdentityConfig, LLMConfig
 from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord
+from scripts.seed_skills import list_skills as _list_skills
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -328,6 +330,37 @@ def delete_memory(memory_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail="Memory not found")
     return {"ok": True}
+
+
+# --- Skills ---
+
+
+@router.get("/skills")
+def list_skills():
+    """List all agent skills stored in PostgresStore."""
+    if _agent is None or not _agent.is_initialized or _agent._postgres_store is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    skills = _list_skills(_agent._postgres_store)
+    return {"skills": skills}
+
+
+_SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+@router.get("/skills/{skill_name}")
+def get_skill(skill_name: str):
+    """Get a single skill's details by name."""
+    if not _SKILL_NAME_RE.match(skill_name):
+        raise HTTPException(status_code=400, detail="Invalid skill name")
+    if _agent is None or not _agent.is_initialized or _agent._postgres_store is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    skills = _list_skills(_agent._postgres_store)
+    for s in skills:
+        if s["name"] == skill_name:
+            return s
+    raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
 
 
 # --- Helpers ---
