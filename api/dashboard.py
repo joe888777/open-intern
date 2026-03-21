@@ -43,7 +43,7 @@ def get_status():
     return {
         "name": _config.identity.name,
         "role": _config.identity.role,
-        "platform": _config.platform.primary,
+        "platform": _config.active_platform,
         "llm_provider": _config.llm.provider,
         "llm_model": _config.llm.model,
         "memory_stats": stats,
@@ -60,14 +60,22 @@ def get_config():
     data = _config.model_dump()
     # Redact secrets
     data["llm"]["api_key"] = "***" if data["llm"]["api_key"] else ""
-    if data["platform"]["lark"]["app_secret"]:
-        data["platform"]["lark"]["app_secret"] = "***"
-    if data["platform"]["discord"]["bot_token"]:
-        data["platform"]["discord"]["bot_token"] = "***"
-    if data["platform"]["slack"]["bot_token"]:
-        data["platform"]["slack"]["bot_token"] = "***"
-    if data["platform"]["slack"]["app_token"]:
-        data["platform"]["slack"]["app_token"] = "***"
+    # Redact top-level API keys
+    for key in ("anthropic_api_key", "openai_api_key", "minimax_api_key"):
+        if data.get(key):
+            data[key] = "***"
+    if data.get("api_secret_key"):
+        data["api_secret_key"] = "***"
+    if data.get("telegram_bot_token"):
+        data["telegram_bot_token"] = "***"
+    if data.get("discord_bot_token"):
+        data["discord_bot_token"] = "***"
+    pc = data.get("platform_config", {})
+    for platform_name in ("lark", "discord", "slack", "telegram"):
+        platform_data = pc.get(platform_name, {})
+        for secret_field in ("app_secret", "bot_token", "app_token"):
+            if platform_data.get(secret_field):
+                platform_data[secret_field] = "***"
     return data
 
 
