@@ -125,7 +125,9 @@ def _save_thread_meta(thread_id: str, title: str, created_at: str = ""):
                 existing.created_at = created_at
             else:
                 record = ThreadMetaRecord(
-                    thread_id=thread_id, title=title, created_at=created_at,
+                    thread_id=thread_id,
+                    title=title,
+                    created_at=created_at,
                 )
                 session.add(record)
             session.commit()
@@ -217,18 +219,18 @@ def list_threads():
         return {"threads": []}
     # Query distinct thread_ids from the checkpoints table
     conn = _agent._checkpoint_conn
-    rows = conn.execute(
-        "SELECT DISTINCT thread_id FROM checkpoints ORDER BY thread_id"
-    ).fetchall()
+    rows = conn.execute("SELECT DISTINCT thread_id FROM checkpoints ORDER BY thread_id").fetchall()
     threads = []
     for row in rows:
         thread_id = row["thread_id"]
         meta = _thread_meta.get(thread_id, {})
-        threads.append({
-            "thread_id": thread_id,
-            "title": meta.get("title", ""),
-            "created_at": meta.get("created_at", ""),
-        })
+        threads.append(
+            {
+                "thread_id": thread_id,
+                "title": meta.get("title", ""),
+                "created_at": meta.get("created_at", ""),
+            }
+        )
     # Sort by created_at descending (threads with metadata first)
     threads.sort(key=lambda t: t["created_at"] or "", reverse=True)
     return {"threads": threads}
@@ -260,15 +262,9 @@ def delete_thread(thread_id: str):
     if _agent is None or _agent._checkpointer is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
     conn = _agent._checkpoint_conn
-    result = conn.execute(
-        "DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,)
-    )
-    conn.execute(
-        "DELETE FROM checkpoint_blobs WHERE thread_id = %s", (thread_id,)
-    )
-    conn.execute(
-        "DELETE FROM checkpoint_writes WHERE thread_id = %s", (thread_id,)
-    )
+    result = conn.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
+    conn.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (thread_id,))
+    conn.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (thread_id,))
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Thread not found")
     _thread_meta.pop(thread_id, None)
