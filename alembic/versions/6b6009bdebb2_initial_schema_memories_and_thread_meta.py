@@ -7,9 +7,9 @@ Create Date: 2026-03-21 20:54:59.881303
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '6b6009bdebb2'
@@ -34,7 +34,9 @@ def upgrade() -> None:
     )
     op.create_index('ix_memories_scope', 'memories', ['scope'], if_not_exists=True)
     op.create_index('ix_memories_scope_id', 'memories', ['scope_id'], if_not_exists=True)
-    op.create_index('ix_memories_scope_scope_id', 'memories', ['scope', 'scope_id'], if_not_exists=True)
+    op.create_index(
+        'ix_memories_scope_scope_id', 'memories', ['scope', 'scope_id'], if_not_exists=True,
+    )
 
     # thread_meta table
     op.create_table('thread_meta',

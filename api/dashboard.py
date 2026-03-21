@@ -124,7 +124,10 @@ def _save_thread_meta(thread_id: str, title: str, created_at: str = ""):
                 existing.title = title
                 existing.created_at = created_at
             else:
-                session.add(ThreadMetaRecord(thread_id=thread_id, title=title, created_at=created_at))
+                record = ThreadMetaRecord(
+                    thread_id=thread_id, title=title, created_at=created_at,
+                )
+                session.add(record)
             session.commit()
 
 
@@ -245,7 +248,8 @@ class ThreadTitleUpdate(BaseModel):
 @router.put("/threads/{thread_id}/title")
 def update_thread_title(thread_id: str, body: ThreadTitleUpdate):
     """Update a thread's title."""
-    created_at = _thread_meta.get(thread_id, {}).get("created_at", datetime.now(timezone.utc).isoformat())
+    meta = _thread_meta.get(thread_id, {})
+    created_at = meta.get("created_at", datetime.now(timezone.utc).isoformat())
     _save_thread_meta(thread_id, body.title, created_at)
     return {"ok": True, "title": body.title}
 
