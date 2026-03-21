@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install ".[dev]"
+      - name: Ruff check
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install ".[all,dev]"
+      - name: Mypy
+        run: mypy core/ cli/ memory/ safety/ server.py --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: open_intern_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install ".[all,dev]"
+      - name: Run tests
+        run: pytest -v
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/open_intern_test
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t open-intern:ci .
+
+  web-lint-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: cd web && npm ci
+      - name: Lint
+        run: cd web && npm run lint
+      - name: Build
+        run: cd web && npm run build

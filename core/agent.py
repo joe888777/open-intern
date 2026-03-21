@@ -39,13 +39,16 @@ def _create_llm(config: AppConfig):
 
     if anthropic_base_url:
         # Anthropic-compatible providers (MiniMax, etc.)
+        # Set env vars so deepagents subagents also use the correct endpoint
         from langchain_anthropic import ChatAnthropic
 
         api_key = (
-            config.llm.api_key
-            or os.environ.get("MINIMAX_API_KEY", "")
-            or os.environ.get("ANTHROPIC_API_KEY", "")
+            (config.llm.api_key or None)
+            or os.environ.get("MINIMAX_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or ""
         )
+        os.environ.setdefault("ANTHROPIC_API_KEY", api_key)
 
         return ChatAnthropic(
             model=config.llm.model,
@@ -135,6 +138,7 @@ class OpenInternAgent:
         self.memory_store = MemoryStore(config.memory.database_url)
         self.safety = SafetyMiddleware(config)
         self._agent = None
+        self._checkpointer = None
 
     def initialize(self) -> None:
         """Initialize all subsystems and create the Deep Agent."""
@@ -152,6 +156,10 @@ class OpenInternAgent:
         # Create memory tools
         memory_tools = create_memory_tools(self.memory_store)
 
+        # Create checkpointer for conversation threading
+        from langgraph.checkpoint.memory import InMemorySaver
+        self._checkpointer = InMemorySaver()
+
         # Create the Deep Agent
         from deepagents import create_deep_agent
 
@@ -159,15 +167,17 @@ class OpenInternAgent:
             model=llm,
             tools=memory_tools,
             system_prompt=system_prompt,
+            checkpointer=self._checkpointer,
         )
         logger.info(f"Agent '{self.config.identity.name}' initialized")
 
-    def chat(self, message: str, context: dict[str, Any] | None = None) -> str:
+    def chat(self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None) -> str:
         """Send a message to the agent and get a response.
 
         Args:
             message: The user message.
             context: Optional context (channel_id, user_id, platform, etc.)
+            thread_id: Optional thread ID for conversation continuity.
 
         Returns:
             The agent's response text.
@@ -189,7 +199,7 @@ class OpenInternAgent:
 
         # Build context-aware message
         enriched_message = message
-        if context.get("channel_id"):
+        if context.get("channel_id") and context.get("platform") != "web":
             enriched_message = (
                 f"[Context: channel={context.get('channel_id', '')}, "
                 f"user={context.get('user_name', 'unknown')}, "
@@ -197,10 +207,16 @@ class OpenInternAgent:
                 f"{message}"
             )
 
+        # Build invoke config with thread_id for conversation continuity
+        invoke_config = {}
+        if thread_id:
+            invoke_config = {"configurable": {"thread_id": thread_id}}
+
         # Invoke the agent
-        result = self._agent.invoke({
-            "messages": [{"role": "user", "content": enriched_message}]
-        })
+        result = self._agent.invoke(
+            {"messages": [{"role": "user", "content": enriched_message}]},
+            invoke_config,
+        )
 
         # Extract response text
         response = self._extract_response(result)

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Pre-push hook — runs lint, type check, and tests before push.
+# Install: cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Skip:    git push --no-verify
+set -euo pipefail
+
+echo "Running pre-push checks..."
+echo ""
+
+# 1. Ruff lint
+echo "[1/3] Ruff check..."
+ruff check .
+ruff format --check .
+
+# 2. Mypy type check
+echo "[2/3] Mypy type check..."
+mypy core/ cli/ --ignore-missing-imports
+
+# 3. Pytest
+echo "[3/3] Running tests..."
+pytest -q
+
+echo ""
+echo "All pre-push checks passed."

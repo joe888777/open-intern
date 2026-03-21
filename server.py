@@ -1,4 +1,4 @@
-"""HTTP server for receiving webhook events (Lark, etc.) and running the agent."""
+"""HTTP server for the agent — webhook events, dashboard API, and platform runners."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from core.agent import OpenInternAgent
 from core.config import AppConfig, load_config
@@ -22,36 +25,50 @@ def get_agent() -> OpenInternAgent:
     return _agent
 
 
-async def run_lark(config: AppConfig, agent: OpenInternAgent) -> None:
-    """Run the Lark bot with a webhook server."""
-    try:
-        from fastapi import FastAPI, Request
-        import uvicorn
-    except ImportError:
-        logger.error("FastAPI and uvicorn required for Lark. pip install fastapi uvicorn")
-        sys.exit(1)
+def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> FastAPI:
+    """Create the FastAPI app with dashboard API and platform webhooks."""
+    app = FastAPI(title=f"open_intern - {config.identity.name}")
 
+    # CORS for Next.js dev server
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Mount dashboard API
+    from api.dashboard import init_dashboard, router as dashboard_router
+    init_dashboard(agent, agent.memory_store, config, config_path)
+    app.include_router(dashboard_router)
+
+    # Health endpoint
+    @app.get("/health")
+    async def health():
+        return {
+            "status": "ok",
+            "agent": config.identity.name,
+            "platform": config.platform.primary,
+            "memory_count": agent.memory_store.count(),
+        }
+
+    return app
+
+
+async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> None:
+    """Run the Lark bot with a webhook server."""
+    import uvicorn
     from integrations.lark.bot import LarkBot, create_lark_webhook_handler
 
     bot = LarkBot(agent, config)
     await bot.start()
     handler = create_lark_webhook_handler(bot)
 
-    app = FastAPI(title=f"open_intern - {config.identity.name}")
-
     @app.post("/lark/webhook")
     async def lark_webhook(request: Request):
         body = await request.json()
         return await handler(body)
-
-    @app.get("/health")
-    async def health():
-        return {
-            "status": "ok",
-            "agent": config.identity.name,
-            "platform": "lark",
-            "memory_count": agent.memory_store.count(),
-        }
 
     server_config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
     server = uvicorn.Server(server_config)
@@ -64,6 +81,15 @@ async def run_discord(config: AppConfig, agent: OpenInternAgent) -> None:
 
     bot = DiscordBot(agent, config)
     await bot.start()
+
+
+async def run_web_only(app: FastAPI) -> None:
+    """Run only the web dashboard API (no chat platform)."""
+    import uvicorn
+
+    server_config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(server_config)
+    await server.serve()
 
 
 async def run_agent(config_path: str | None = None) -> None:
@@ -88,14 +114,20 @@ async def run_agent(config_path: str | None = None) -> None:
     agent.initialize()
     _agent = agent
 
+    # Create the shared FastAPI app
+    app = create_app(config, agent, config_path or "config/agent.yaml")
+
     # Run on the configured platform
     platform = config.platform.primary
     if platform == "lark":
-        await run_lark(config, agent)
+        await run_lark(app, config, agent)
     elif platform == "discord":
         await run_discord(config, agent)
+    elif platform == "web":
+        logger.info("Running in web-only mode (dashboard API on port 8000)")
+        await run_web_only(app)
     elif platform == "slack":
-        logger.error("Slack integration not yet implemented. Use lark or discord.")
+        logger.error("Slack integration not yet implemented. Use lark, discord, or web.")
         sys.exit(1)
     else:
         logger.error(f"Unknown platform: {platform}")

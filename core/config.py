@@ -47,7 +47,7 @@ class LLMConfig(BaseModel):
 
 
 class MemoryConfig(BaseModel):
-    database_url: str = "postgresql://open_intern:open_intern@localhost:5555/open_intern"
+    database_url: str = "postgresql://open_intern:open_intern@localhost:5556/open_intern"
     embedding_model: str = "text-embedding-3-small"
     max_retrieval_results: int = 10
     importance_decay_days: int = 90

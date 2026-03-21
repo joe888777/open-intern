@@ -63,6 +63,7 @@ def start(
     config_path: str = typer.Option(
         "config/agent.yaml", "--config", "-c", help="Path to config file"
     ),
+    web: bool = typer.Option(False, "--web", "-w", help="Run in web-only mode (dashboard on port 8000)"),
 ):
     """Start the open_intern agent."""
     config_file = Path(config_path)
@@ -71,9 +72,16 @@ def start(
         console.print("Run 'open_intern init' first.")
         raise typer.Exit(1)
 
+    if web:
+        # Override platform to web-only mode
+        import yaml
+        raw = yaml.safe_load(config_file.read_text()) or {}
+        raw.setdefault("platform", {})["primary"] = "web"
+        config_file.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False, allow_unicode=True))
+
     console.print(Panel.fit(
         "[bold green]Starting open_intern[/bold green]",
-        subtitle="Press Ctrl+C to stop",
+        subtitle="Dashboard: http://localhost:3000 | API: http://localhost:8000 | Ctrl+C to stop",
     ))
 
     from server import run_agent
