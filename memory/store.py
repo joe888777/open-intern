@@ -66,6 +66,9 @@ class MemoryStore:
     """Persistent memory store with 3-layer isolation."""
 
     def __init__(self, database_url: str):
+        # Use psycopg (v3) driver instead of psycopg2
+        if database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
         self.engine = create_engine(database_url)
         self._session_factory = sessionmaker(bind=self.engine)
 
