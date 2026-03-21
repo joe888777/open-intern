@@ -17,18 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryScope(str, Enum):
-    SHARED = "shared"       # org-wide, visible to all
-    CHANNEL = "channel"     # visible only in a specific channel context
-    PERSONAL = "personal"   # visible only in DMs with a specific user
+    SHARED = "shared"  # org-wide, visible to all
+    CHANNEL = "channel"  # visible only in a specific channel context
+    PERSONAL = "personal"  # visible only in DMs with a specific user
 
 
 class MemoryEntry(BaseModel):
     """A single memory record."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     content: str
     scope: MemoryScope
     scope_id: str = ""  # channel_id or user_id, empty for shared
-    source: str = ""    # where this memory came from (slack msg, notion doc, etc.)
+    source: str = ""  # where this memory came from (slack msg, notion doc, etc.)
     importance: float = 0.5
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -50,9 +51,7 @@ class MemoryRecord(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
     metadata_json = Column(Text, nullable=False, default="{}")
 
-    __table_args__ = (
-        Index("ix_memories_scope_scope_id", "scope", "scope_id"),
-    )
+    __table_args__ = (Index("ix_memories_scope_scope_id", "scope", "scope_id"),)
 
 
 class MemoryStore:
@@ -116,16 +115,18 @@ class MemoryStore:
 
             results = []
             for record in q.all():
-                results.append(MemoryEntry(
-                    id=record.id,
-                    content=record.content,
-                    scope=MemoryScope(record.scope),
-                    scope_id=record.scope_id,
-                    source=record.source,
-                    importance=record.importance,
-                    created_at=record.created_at,
-                    metadata=json.loads(record.metadata_json),
-                ))
+                results.append(
+                    MemoryEntry(
+                        id=record.id,
+                        content=record.content,
+                        scope=MemoryScope(record.scope),
+                        scope_id=record.scope_id,
+                        source=record.source,
+                        importance=record.importance,
+                        created_at=record.created_at,
+                        metadata=json.loads(record.metadata_json),
+                    )
+                )
             return results
 
     def get_context_memories(
@@ -146,16 +147,18 @@ class MemoryStore:
 
             results = []
             for record in q.all():
-                results.append(MemoryEntry(
-                    id=record.id,
-                    content=record.content,
-                    scope=MemoryScope(record.scope),
-                    scope_id=record.scope_id,
-                    source=record.source,
-                    importance=record.importance,
-                    created_at=record.created_at,
-                    metadata=json.loads(record.metadata_json),
-                ))
+                results.append(
+                    MemoryEntry(
+                        id=record.id,
+                        content=record.content,
+                        scope=MemoryScope(record.scope),
+                        scope_id=record.scope_id,
+                        source=record.source,
+                        importance=record.importance,
+                        created_at=record.created_at,
+                        metadata=json.loads(record.metadata_json),
+                    )
+                )
             return results
 
     def forget(self, memory_id: str) -> bool:

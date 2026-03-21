@@ -33,6 +33,7 @@ def init_dashboard(agent, memory_store: MemoryStore, config: AppConfig, config_p
 
 # --- Status ---
 
+
 @router.get("/status")
 def get_status():
     if _config is None:
@@ -49,6 +50,7 @@ def get_status():
 
 
 # --- Config ---
+
 
 @router.get("/config")
 def get_config():
@@ -127,6 +129,7 @@ def chat(body: ChatRequest):
     if _agent is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
     from uuid import uuid4
+
     is_new = not body.thread_id
     thread_id = body.thread_id or str(uuid4())
     response = _agent.chat(
@@ -159,6 +162,7 @@ def _generate_thread_title(user_message: str, agent_response: str) -> str:
         return user_message[:40]
     try:
         from core.agent import _create_llm
+
         llm = _create_llm(_agent.config)
         result = llm.invoke(
             "Generate a very short title (max 6 words, no quotes) "
@@ -178,6 +182,7 @@ def _generate_thread_title(user_message: str, agent_response: str) -> str:
 
 
 # --- Threads ---
+
 
 @router.get("/threads")
 def list_threads():
@@ -225,7 +230,11 @@ def delete_thread(thread_id: str):
     """Delete a conversation thread."""
     if _agent is None or _agent._checkpointer is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    keys_to_delete = [k for k in _agent._checkpointer.storage if k[0] == thread_id]
+    keys_to_delete = [
+        k
+        for k in _agent._checkpointer.storage
+        if (k[0] if isinstance(k, tuple) else k) == thread_id
+    ]
     if not keys_to_delete:
         raise HTTPException(status_code=404, detail="Thread not found")
     for key in keys_to_delete:
@@ -235,6 +244,7 @@ def delete_thread(thread_id: str):
 
 
 # --- Memories ---
+
 
 @router.get("/memories")
 def list_memories(scope: str | None = None, limit: int = 50, offset: int = 0):
@@ -251,15 +261,17 @@ def list_memories(scope: str | None = None, limit: int = 50, offset: int = 0):
 
         items = []
         for r in records:
-            items.append({
-                "id": r.id,
-                "content": r.content,
-                "scope": r.scope,
-                "scope_id": r.scope_id,
-                "source": r.source,
-                "importance": r.importance,
-                "created_at": r.created_at.isoformat() if r.created_at else "",
-            })
+            items.append(
+                {
+                    "id": r.id,
+                    "content": r.content,
+                    "scope": r.scope,
+                    "scope_id": r.scope_id,
+                    "source": r.source,
+                    "importance": r.importance,
+                    "created_at": r.created_at.isoformat() if r.created_at else "",
+                }
+            )
         return {"items": items, "total": total}
 
 
@@ -279,6 +291,7 @@ def delete_memory(memory_id: str):
 
 
 # --- Helpers ---
+
 
 def _get_memory_stats() -> dict:
     if _memory_store is None:

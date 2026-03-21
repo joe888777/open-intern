@@ -45,6 +45,7 @@ def init(
         import yaml
 
         from core.config import AppConfig
+
         target.write_text(yaml.dump(AppConfig().model_dump(), default_flow_style=False))
         console.print(f"[green]Default config created at {target}[/green]")
 
@@ -77,18 +78,22 @@ def start(
     if web:
         # Override platform to web-only mode
         import yaml
+
         raw = yaml.safe_load(config_file.read_text()) or {}
         raw.setdefault("platform", {})["primary"] = "web"
         config_file.write_text(
             yaml.dump(raw, default_flow_style=False, sort_keys=False, allow_unicode=True)
         )
 
-    console.print(Panel.fit(
-        "[bold green]Starting open_intern[/bold green]",
-        subtitle="Dashboard: http://localhost:3000 | API: http://localhost:8000 | Ctrl+C to stop",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold green]Starting open_intern[/bold green]",
+            subtitle="Dashboard: http://localhost:3000 | API: http://localhost:8000 | Ctrl+C to stop",
+        )
+    )
 
     from server import run_agent
+
     try:
         asyncio.run(run_agent(config_path))
     except KeyboardInterrupt:
@@ -130,6 +135,7 @@ def status(
     # Try to connect to memory store and show stats
     try:
         from memory.store import MemoryScope, MemoryStore
+
         store = MemoryStore(config.memory.database_url)
         mem_table = Table(title="Memory Statistics")
         mem_table.add_column("Scope", style="cyan")
@@ -154,6 +160,7 @@ def logs(
         raise typer.Exit()
 
     import json
+
     all_lines = audit_file.read_text().strip().split("\n")
     recent = all_lines[-lines:]
 
@@ -192,10 +199,11 @@ def chat(
     from core.config import load_config
 
     config = load_config(config_path)
-    console.print(Panel.fit(
-        f"[bold]Chatting with {config.identity.name}[/bold]\n"
-        f"Type 'quit' to exit",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Chatting with {config.identity.name}[/bold]\nType 'quit' to exit",
+        )
+    )
 
     agent = OpenInternAgent(config)
     agent.initialize()
@@ -209,12 +217,15 @@ def chat(
         if user_input.strip().lower() in ("quit", "exit", "q"):
             break
 
-        response = agent.chat(user_input, context={
-            "platform": "cli",
-            "channel_id": "cli",
-            "user_name": "user",
-            "is_dm": True,
-        })
+        response = agent.chat(
+            user_input,
+            context={
+                "platform": "cli",
+                "channel_id": "cli",
+                "user_name": "user",
+                "is_dm": True,
+            },
+        )
 
         console.print(f"[bold green]{config.identity.name}:[/bold green] {response}")
         console.print()

@@ -102,7 +102,7 @@ class DiscordBot(Integration):
         if len(content) <= 2000:
             await channel.send(content)
         else:
-            chunks = [content[i:i + 1990] for i in range(0, len(content), 1990)]
+            chunks = [content[i : i + 1990] for i in range(0, len(content), 1990)]
             for chunk in chunks:
                 await channel.send(chunk)
 

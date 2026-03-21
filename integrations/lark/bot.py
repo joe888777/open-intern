@@ -132,6 +132,7 @@ class LarkBot(Integration):
             content_str = message.get("content", "{}")
             try:
                 import json
+
                 content_data = json.loads(content_str)
                 text = content_data.get("text", "")
             except (json.JSONDecodeError, TypeError):

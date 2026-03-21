@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 class ActionLevel(str, Enum):
-    READ = "read"               # observing info — always allowed
+    READ = "read"  # observing info — always allowed
     WRITE_INTERNAL = "write_internal"  # notes, drafts — allowed, logged
     WRITE_EXTERNAL = "write_external"  # emails, public posts — may need approval
-    DESTRUCTIVE = "destructive"        # deletions, merges — always needs approval
+    DESTRUCTIVE = "destructive"  # deletions, merges — always needs approval
 
 
 class ActionVerdict(str, Enum):
@@ -97,9 +97,7 @@ class SafetyMiddleware:
         self.audit_log.append(entry)
         with open(self._audit_file, "a") as f:
             f.write(entry.model_dump_json() + "\n")
-        logger.info(
-            f"[AUDIT] {entry.verdict.value}: {entry.action_type} - {entry.description}"
-        )
+        logger.info(f"[AUDIT] {entry.verdict.value}: {entry.action_type} - {entry.description}")
 
     def get_recent_audit(self, limit: int = 20) -> list[AuditEntry]:
         """Get recent audit entries."""

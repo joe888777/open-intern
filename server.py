@@ -39,6 +39,7 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
     # Mount dashboard API
     from api.dashboard import init_dashboard
     from api.dashboard import router as dashboard_router
+
     init_dashboard(agent, agent.memory_store, config, config_path)
     app.include_router(dashboard_router)
 
