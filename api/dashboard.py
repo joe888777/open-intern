@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core.config import AppConfig, IdentityConfig, LLMConfig
-from memory.store import MemoryRecord, MemoryScope, MemoryStore
+from memory.store import MemoryRecord, MemoryScope, MemoryStore, ThreadMetaRecord
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -29,6 +29,7 @@ def init_dashboard(agent, memory_store: MemoryStore, config: AppConfig, config_p
     _memory_store = memory_store
     _config = config
     _config_path = config_path
+    _load_thread_meta()
 
 
 # --- Status ---
@@ -109,8 +110,33 @@ def update_llm(body: LLMUpdate):
 
 # --- Chat ---
 
-# In-memory thread metadata (title, created_at)
+# Thread metadata cache (backed by thread_meta table via SQLAlchemy)
 _thread_meta: dict[str, dict] = {}
+
+
+def _save_thread_meta(thread_id: str, title: str, created_at: str = ""):
+    """Save thread metadata to DB and cache."""
+    _thread_meta[thread_id] = {"title": title, "created_at": created_at}
+    if _memory_store:
+        with _memory_store._session() as session:
+            existing = session.query(ThreadMetaRecord).filter_by(thread_id=thread_id).first()
+            if existing:
+                existing.title = title
+                existing.created_at = created_at
+            else:
+                session.add(ThreadMetaRecord(thread_id=thread_id, title=title, created_at=created_at))
+            session.commit()
+
+
+def _load_thread_meta():
+    """Load all thread metadata from DB into cache."""
+    if _memory_store:
+        try:
+            with _memory_store._session() as session:
+                for row in session.query(ThreadMetaRecord).all():
+                    _thread_meta[row.thread_id] = {"title": row.title, "created_at": row.created_at}
+        except Exception:
+            pass
 
 
 class ChatRequest(BaseModel):
@@ -146,10 +172,7 @@ def chat(body: ChatRequest):
     # Auto-generate title on first message
     if is_new:
         title = _generate_thread_title(body.message, response)
-        _thread_meta[thread_id] = {
-            "title": title,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
+        _save_thread_meta(thread_id, title, datetime.now(timezone.utc).isoformat())
     else:
         title = _thread_meta.get(thread_id, {}).get("title", "")
 
@@ -189,20 +212,23 @@ def list_threads():
     """List all conversation threads with titles."""
     if _agent is None or _agent._checkpointer is None:
         return {"threads": []}
-    checkpointer = _agent._checkpointer
-    threads: dict[str, dict] = {}
-    for key in checkpointer.storage.keys():
-        # Key can be a string (thread_id) or tuple (thread_id, namespace)
-        thread_id = key[0] if isinstance(key, tuple) else key
-        if thread_id not in threads:
-            meta = _thread_meta.get(thread_id, {})
-            threads[thread_id] = {
-                "thread_id": thread_id,
-                "title": meta.get("title", ""),
-                "created_at": meta.get("created_at", ""),
-            }
-    sorted_threads = sorted(threads.values(), key=lambda t: t["created_at"], reverse=True)
-    return {"threads": sorted_threads}
+    # Query distinct thread_ids from the checkpoints table
+    conn = _agent._checkpoint_conn
+    rows = conn.execute(
+        "SELECT DISTINCT thread_id FROM checkpoints ORDER BY thread_id"
+    ).fetchall()
+    threads = []
+    for row in rows:
+        thread_id = row["thread_id"]
+        meta = _thread_meta.get(thread_id, {})
+        threads.append({
+            "thread_id": thread_id,
+            "title": meta.get("title", ""),
+            "created_at": meta.get("created_at", ""),
+        })
+    # Sort by created_at descending (threads with metadata first)
+    threads.sort(key=lambda t: t["created_at"] or "", reverse=True)
+    return {"threads": threads}
 
 
 @router.get("/threads/{thread_id}")
@@ -219,9 +245,8 @@ class ThreadTitleUpdate(BaseModel):
 @router.put("/threads/{thread_id}/title")
 def update_thread_title(thread_id: str, body: ThreadTitleUpdate):
     """Update a thread's title."""
-    if thread_id not in _thread_meta:
-        _thread_meta[thread_id] = {"created_at": datetime.now(timezone.utc).isoformat()}
-    _thread_meta[thread_id]["title"] = body.title
+    created_at = _thread_meta.get(thread_id, {}).get("created_at", datetime.now(timezone.utc).isoformat())
+    _save_thread_meta(thread_id, body.title, created_at)
     return {"ok": True, "title": body.title}
 
 
@@ -230,16 +255,23 @@ def delete_thread(thread_id: str):
     """Delete a conversation thread."""
     if _agent is None or _agent._checkpointer is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    keys_to_delete = [
-        k
-        for k in _agent._checkpointer.storage
-        if (k[0] if isinstance(k, tuple) else k) == thread_id
-    ]
-    if not keys_to_delete:
+    conn = _agent._checkpoint_conn
+    result = conn.execute(
+        "DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,)
+    )
+    conn.execute(
+        "DELETE FROM checkpoint_blobs WHERE thread_id = %s", (thread_id,)
+    )
+    conn.execute(
+        "DELETE FROM checkpoint_writes WHERE thread_id = %s", (thread_id,)
+    )
+    if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Thread not found")
-    for key in keys_to_delete:
-        del _agent._checkpointer.storage[key]
     _thread_meta.pop(thread_id, None)
+    if _memory_store:
+        with _memory_store._session() as session:
+            session.query(ThreadMetaRecord).filter_by(thread_id=thread_id).delete()
+            session.commit()
     return {"ok": True}
 
 

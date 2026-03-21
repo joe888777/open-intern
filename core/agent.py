@@ -155,10 +155,20 @@ class OpenInternAgent:
         # Create memory tools
         memory_tools = create_memory_tools(self.memory_store)
 
-        # Create checkpointer for conversation threading
-        from langgraph.checkpoint.memory import InMemorySaver
+        # Create checkpointer for conversation threading (persisted to PostgreSQL)
+        from langgraph.checkpoint.postgres import PostgresSaver
+        from psycopg import Connection
+        from psycopg.rows import dict_row
 
-        self._checkpointer = InMemorySaver()
+        self._checkpoint_conn = Connection.connect(
+            self.config.memory.database_url,
+            autocommit=True,
+            prepare_threshold=0,
+            row_factory=dict_row,
+        )
+        self._checkpointer = PostgresSaver(self._checkpoint_conn)
+        self._checkpointer.setup()
+        logger.info("Checkpointer ready (PostgreSQL)")
 
         # Create the Deep Agent
         from deepagents import create_deep_agent

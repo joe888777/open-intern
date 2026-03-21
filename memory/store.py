@@ -54,6 +54,14 @@ class MemoryRecord(Base):
     __table_args__ = (Index("ix_memories_scope_scope_id", "scope", "scope_id"),)
 
 
+class ThreadMetaRecord(Base):
+    __tablename__ = "thread_meta"
+
+    thread_id = Column(String, primary_key=True)
+    title = Column(Text, nullable=False, default="")
+    created_at = Column(String, nullable=False, default="")
+
+
 class MemoryStore:
     """Persistent memory store with 3-layer isolation."""
 
@@ -62,8 +70,9 @@ class MemoryStore:
         self._session_factory = sessionmaker(bind=self.engine)
 
     def initialize(self) -> None:
-        """Create tables if they don't exist."""
-        Base.metadata.create_all(self.engine)
+        """Verify database connection. Tables are managed by alembic migrations."""
+        with self.engine.connect() as conn:
+            conn.execute(Base.metadata.tables["memories"].select().limit(0))
         logger.info("Memory store initialized")
 
     def _session(self) -> Session:
