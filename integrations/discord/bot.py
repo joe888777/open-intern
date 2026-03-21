@@ -1,0 +1,112 @@
+"""Discord bot integration."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+from core.agent import OpenInternAgent
+from core.config import AppConfig
+from integrations.base import ChatEvent, Integration
+
+logger = logging.getLogger(__name__)
+
+
+class DiscordBot(Integration):
+    """Discord bot integration using discord.py."""
+
+    def __init__(self, agent: OpenInternAgent, config: AppConfig):
+        super().__init__(agent)
+        self.token = config.platform.discord.bot_token
+        self._bot = None
+        self._bot_id: str = ""
+
+    async def start(self) -> None:
+        """Start the Discord bot."""
+        try:
+            import discord
+        except ImportError:
+            raise ImportError(
+                "discord.py is required for Discord integration. "
+                "Install with: pip install 'open-intern[discord]'"
+            )
+
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.guilds = True
+        intents.members = True
+
+        client = discord.Client(intents=intents)
+        self._bot = client
+
+        @client.event
+        async def on_ready():
+            self._bot_id = str(client.user.id)
+            logger.info(f"Discord bot ready: {client.user.name} ({self._bot_id})")
+
+        @client.event
+        async def on_message(message: discord.Message):
+            # Skip own messages
+            if message.author.id == client.user.id:
+                return
+
+            # Check if bot is mentioned or it's a DM
+            is_mentioned = client.user in message.mentions
+            is_dm = isinstance(message.channel, discord.DMChannel)
+
+            if not is_mentioned and not is_dm:
+                return
+
+            # Strip the mention from content
+            content = message.content
+            if is_mentioned:
+                content = content.replace(f"<@{client.user.id}>", "").strip()
+
+            event = ChatEvent(
+                platform="discord",
+                event_type="message",
+                channel_id=str(message.channel.id),
+                user_id=str(message.author.id),
+                user_name=message.author.display_name,
+                content=content,
+                is_dm=is_dm,
+                thread_id=str(message.id),
+                raw=message,
+            )
+
+            await self.handle_event(event)
+
+        # Run the bot (this blocks)
+        logger.info("Starting Discord bot...")
+        await client.start(self.token)
+
+    async def stop(self) -> None:
+        """Stop the Discord bot."""
+        if self._bot:
+            await self._bot.close()
+            logger.info("Discord bot stopped")
+
+    async def send_message(
+        self, channel_id: str, content: str, thread_id: str | None = None
+    ) -> None:
+        """Send a message to a Discord channel."""
+        if not self._bot:
+            logger.error("Discord bot not started")
+            return
+
+        channel = self._bot.get_channel(int(channel_id))
+        if channel is None:
+            logger.error(f"Channel {channel_id} not found")
+            return
+
+        # Split long messages (Discord has 2000 char limit)
+        if len(content) <= 2000:
+            await channel.send(content)
+        else:
+            chunks = [content[i:i + 1990] for i in range(0, len(content), 1990)]
+            for chunk in chunks:
+                await channel.send(chunk)
+
+    def _is_self(self, event: ChatEvent) -> bool:
+        return event.user_id == self._bot_id

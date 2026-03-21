@@ -1,0 +1,280 @@
+"""Core agent — wraps Deep Agents with open_intern's memory, safety, and identity."""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from typing import Any
+
+from langchain.chat_models import init_chat_model
+from langchain_core.tools import tool
+
+from core.config import AppConfig
+from core.identity import build_system_prompt
+from memory.store import MemoryEntry, MemoryScope, MemoryStore
+from safety.permissions import ActionVerdict, SafetyMiddleware
+
+logger = logging.getLogger(__name__)
+
+# Provider mapping for init_chat_model
+PROVIDER_MAP = {
+    "claude": "anthropic",
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "ollama": "ollama",
+}
+
+# Providers that use Anthropic-compatible API with custom base_url
+ANTHROPIC_COMPATIBLE_PROVIDERS = {
+    "minimax": "https://api.minimax.io/anthropic",
+}
+
+
+def _create_llm(config: AppConfig):
+    """Create the LLM instance based on config."""
+    import os
+
+    provider = config.llm.provider
+    anthropic_base_url = ANTHROPIC_COMPATIBLE_PROVIDERS.get(provider)
+
+    if anthropic_base_url:
+        # Anthropic-compatible providers (MiniMax, etc.)
+        from langchain_anthropic import ChatAnthropic
+
+        api_key = (
+            config.llm.api_key
+            or os.environ.get("MINIMAX_API_KEY", "")
+            or os.environ.get("ANTHROPIC_API_KEY", "")
+        )
+
+        return ChatAnthropic(
+            model=config.llm.model,
+            base_url=anthropic_base_url,
+            api_key=api_key,
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens_per_action,
+        )
+    else:
+        # Native LangChain providers (Claude, OpenAI, Ollama)
+        model_string = _resolve_model_string(config)
+        return init_chat_model(
+            model_string,
+            temperature=config.llm.temperature,
+        )
+
+
+def _resolve_model_string(config: AppConfig) -> str:
+    """Convert config to init_chat_model format like 'anthropic:claude-sonnet-4-6'."""
+    provider = PROVIDER_MAP.get(config.llm.provider, config.llm.provider)
+    return f"{provider}:{config.llm.model}"
+
+
+def create_memory_tools(memory_store: MemoryStore) -> list:
+    """Create LangChain tools for memory operations."""
+
+    @tool
+    def recall_memory(query: str, scope: str = "shared") -> str:
+        """Search organizational memory for relevant information.
+
+        Args:
+            query: What to search for in memory.
+            scope: Memory scope - "shared" (org-wide), "channel" (current channel),
+                   or "personal" (DM context). Defaults to "shared".
+        """
+        try:
+            mem_scope = MemoryScope(scope)
+        except ValueError:
+            mem_scope = MemoryScope.SHARED
+
+        entries = memory_store.recall(query, scope=mem_scope, limit=5)
+        if not entries:
+            return "No relevant memories found."
+
+        results = []
+        for e in entries:
+            ts = e.created_at.strftime("%Y-%m-%d %H:%M")
+            results.append(f"[{ts}] ({e.source or 'unknown'}): {e.content}")
+        return "\n---\n".join(results)
+
+    @tool
+    def store_memory(content: str, scope: str = "shared", source: str = "") -> str:
+        """Store important information to organizational memory.
+
+        Use this when you learn something important that should be remembered:
+        - Decisions made by the team
+        - Key facts about projects, people, or processes
+        - Action items and commitments
+
+        Args:
+            content: The information to remember.
+            scope: "shared" (org-wide), "channel" (channel-specific), "personal" (DM-specific).
+            source: Where this info came from (e.g., "slack #general", "meeting notes").
+        """
+        try:
+            mem_scope = MemoryScope(scope)
+        except ValueError:
+            mem_scope = MemoryScope.SHARED
+
+        entry = MemoryEntry(
+            content=content,
+            scope=mem_scope,
+            source=source,
+            importance=0.7,
+        )
+        memory_store.store(entry)
+        return f"Stored to {scope} memory."
+
+    return [recall_memory, store_memory]
+
+
+class OpenInternAgent:
+    """The main agent that ties Deep Agents + Memory + Safety together."""
+
+    def __init__(self, config: AppConfig):
+        self.config = config
+        self.memory_store = MemoryStore(config.memory.database_url)
+        self.safety = SafetyMiddleware(config)
+        self._agent = None
+
+    def initialize(self) -> None:
+        """Initialize all subsystems and create the Deep Agent."""
+        # Initialize memory
+        self.memory_store.initialize()
+        logger.info("Memory store ready")
+
+        # Create LLM
+        llm = _create_llm(self.config)
+        logger.info(f"LLM ready: {self.config.llm.provider}:{self.config.llm.model}")
+
+        # Build system prompt with identity
+        system_prompt = build_system_prompt(self.config)
+
+        # Create memory tools
+        memory_tools = create_memory_tools(self.memory_store)
+
+        # Create the Deep Agent
+        from deepagents import create_deep_agent
+
+        self._agent = create_deep_agent(
+            model=llm,
+            tools=memory_tools,
+            system_prompt=system_prompt,
+        )
+        logger.info(f"Agent '{self.config.identity.name}' initialized")
+
+    def chat(self, message: str, context: dict[str, Any] | None = None) -> str:
+        """Send a message to the agent and get a response.
+
+        Args:
+            message: The user message.
+            context: Optional context (channel_id, user_id, platform, etc.)
+
+        Returns:
+            The agent's response text.
+        """
+        if self._agent is None:
+            raise RuntimeError("Agent not initialized. Call initialize() first.")
+
+        context = context or {}
+
+        # Safety check
+        action_type = "respond_to_dm" if context.get("is_dm") else "respond_to_mention"
+        verdict = self.safety.check(
+            action_type,
+            description=f"Responding to message in {context.get('channel_id', 'unknown')}",
+            user_id=context.get("user_id", ""),
+        )
+        if verdict == ActionVerdict.DENY:
+            return "I'm not allowed to respond in this context."
+
+        # Build context-aware message
+        enriched_message = message
+        if context.get("channel_id"):
+            enriched_message = (
+                f"[Context: channel={context.get('channel_id', '')}, "
+                f"user={context.get('user_name', 'unknown')}, "
+                f"platform={context.get('platform', 'unknown')}]\n\n"
+                f"{message}"
+            )
+
+        # Invoke the agent
+        result = self._agent.invoke({
+            "messages": [{"role": "user", "content": enriched_message}]
+        })
+
+        # Extract response text
+        response = self._extract_response(result)
+
+        # Store conversation to memory
+        self._store_conversation(message, response, context)
+
+        return response
+
+    def _extract_response(self, result: Any) -> str:
+        """Extract the final text response from agent result."""
+        if isinstance(result, dict) and "messages" in result:
+            messages = result["messages"]
+            # Find the last AI message
+            for msg in reversed(messages):
+                if hasattr(msg, "content") and msg.content:
+                    if hasattr(msg, "type") and msg.type == "ai":
+                        return self._extract_text_content(msg.content)
+                elif isinstance(msg, dict) and msg.get("role") == "assistant":
+                    return self._extract_text_content(msg.get("content", ""))
+            # Fallback: last message content
+            if messages:
+                last = messages[-1]
+                if hasattr(last, "content"):
+                    return self._extract_text_content(last.content)
+                if isinstance(last, dict):
+                    return self._extract_text_content(last.get("content", ""))
+        if isinstance(result, str):
+            return result
+        return str(result)
+
+    @staticmethod
+    def _extract_text_content(content: Any) -> str:
+        """Extract plain text from content that may be a list of blocks (MiniMax/Anthropic format).
+
+        Handles both plain strings and list-of-dicts format like:
+        [{"type": "thinking", "thinking": "..."}, {"type": "text", "text": "Hello!"}]
+        """
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        continue  # skip tool calls
+                    elif block.get("type") == "thinking":
+                        continue  # skip thinking blocks
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            return "\n".join(text_parts) if text_parts else str(content)
+        return str(content)
+
+    def _store_conversation(
+        self, user_message: str, response: str, context: dict[str, Any]
+    ) -> None:
+        """Store the conversation turn to memory."""
+        scope = MemoryScope.PERSONAL if context.get("is_dm") else MemoryScope.CHANNEL
+        scope_id = context.get("channel_id", "")
+
+        # Store user message
+        self.memory_store.store(MemoryEntry(
+            content=f"[{context.get('user_name', 'user')}]: {user_message}",
+            scope=scope,
+            scope_id=scope_id,
+            source=f"{context.get('platform', 'chat')} message",
+        ))
+
+        # Store agent response
+        self.memory_store.store(MemoryEntry(
+            content=f"[{self.config.identity.name}]: {response}",
+            scope=scope,
+            scope_id=scope_id,
+            source=f"{context.get('platform', 'chat')} response",
+        ))

@@ -1,0 +1,47 @@
+[project]
+name = "open-intern"
+version = "0.1.0"
+description = "An open-source AI employee that joins your team as a real teammate"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents>=0.1.0",
+    "langgraph>=0.4.0",
+    "langchain>=0.3.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "langchain-community>=0.3.0",
+    "psycopg[binary]>=3.2.0",
+    "pgvector>=0.3.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.14.0",
+    "pyyaml>=6.0",
+    "typer>=0.15.0",
+    "rich>=13.0.0",
+    "httpx>=0.28.0",
+    "apscheduler>=3.11.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+]
+
+[project.optional-dependencies]
+lark = ["lark-oapi>=1.4.0"]
+discord = ["discord.py>=2.4.0"]
+slack = ["slack-bolt>=1.21.0"]
+all = ["open-intern[lark,discord,slack]"]
+dev = ["pytest>=8.0", "ruff>=0.8.0", "mypy>=1.13.0"]
+
+[project.scripts]
+open_intern = "cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
