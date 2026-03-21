@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -171,7 +170,6 @@ def create_lark_webhook_handler(bot: LarkBot):
             body = await request.json()
             return await handler(body)
     """
-    import json
 
     async def handle(body: dict[str, Any]) -> dict[str, Any]:
         # URL verification challenge

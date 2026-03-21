@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +37,8 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
     )
 
     # Mount dashboard API
-    from api.dashboard import init_dashboard, router as dashboard_router
+    from api.dashboard import init_dashboard
+    from api.dashboard import router as dashboard_router
     init_dashboard(agent, agent.memory_store, config, config_path)
     app.include_router(dashboard_router)
 
@@ -59,6 +58,7 @@ def create_app(config: AppConfig, agent: OpenInternAgent, config_path: str) -> F
 async def run_lark(app: FastAPI, config: AppConfig, agent: OpenInternAgent) -> None:
     """Run the Lark bot with a webhook server."""
     import uvicorn
+
     from integrations.lark.bot import LarkBot, create_lark_webhook_handler
 
     bot = LarkBot(agent, config)

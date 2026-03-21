@@ -62,7 +62,9 @@ class Integration(ABC):
         ...
 
     @abstractmethod
-    async def send_message(self, channel_id: str, content: str, thread_id: str | None = None) -> None:
+    async def send_message(
+        self, channel_id: str, content: str, thread_id: str | None = None
+    ) -> None:
         """Send a message to a channel."""
         ...
 

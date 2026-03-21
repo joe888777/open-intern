@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from langchain.chat_models import init_chat_model
@@ -158,6 +157,7 @@ class OpenInternAgent:
 
         # Create checkpointer for conversation threading
         from langgraph.checkpoint.memory import InMemorySaver
+
         self._checkpointer = InMemorySaver()
 
         # Create the Deep Agent
@@ -171,7 +171,9 @@ class OpenInternAgent:
         )
         logger.info(f"Agent '{self.config.identity.name}' initialized")
 
-    def chat(self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None) -> str:
+    def chat(
+        self, message: str, context: dict[str, Any] | None = None, thread_id: str | None = None
+    ) -> str:
         """Send a message to the agent and get a response.
 
         Args:
@@ -280,17 +282,21 @@ class OpenInternAgent:
         scope_id = context.get("channel_id", "")
 
         # Store user message
-        self.memory_store.store(MemoryEntry(
-            content=f"[{context.get('user_name', 'user')}]: {user_message}",
-            scope=scope,
-            scope_id=scope_id,
-            source=f"{context.get('platform', 'chat')} message",
-        ))
+        self.memory_store.store(
+            MemoryEntry(
+                content=f"[{context.get('user_name', 'user')}]: {user_message}",
+                scope=scope,
+                scope_id=scope_id,
+                source=f"{context.get('platform', 'chat')} message",
+            )
+        )
 
         # Store agent response
-        self.memory_store.store(MemoryEntry(
-            content=f"[{self.config.identity.name}]: {response}",
-            scope=scope,
-            scope_id=scope_id,
-            source=f"{context.get('platform', 'chat')} response",
-        ))
+        self.memory_store.store(
+            MemoryEntry(
+                content=f"[{self.config.identity.name}]: {response}",
+                scope=scope,
+                scope_id=scope_id,
+                source=f"{context.get('platform', 'chat')} response",
+            )
+        )

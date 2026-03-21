@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import sys
 from pathlib import Path
 
 import typer
@@ -43,8 +42,9 @@ def init(
     else:
         console.print("[red]Example config not found. Creating default...[/red]")
         target.parent.mkdir(parents=True, exist_ok=True)
-        from core.config import AppConfig
         import yaml
+
+        from core.config import AppConfig
         target.write_text(yaml.dump(AppConfig().model_dump(), default_flow_style=False))
         console.print(f"[green]Default config created at {target}[/green]")
 
@@ -63,7 +63,9 @@ def start(
     config_path: str = typer.Option(
         "config/agent.yaml", "--config", "-c", help="Path to config file"
     ),
-    web: bool = typer.Option(False, "--web", "-w", help="Run in web-only mode (dashboard on port 8000)"),
+    web: bool = typer.Option(
+        False, "--web", "-w", help="Run in web-only mode (dashboard on port 8000)"
+    ),
 ):
     """Start the open_intern agent."""
     config_file = Path(config_path)
@@ -77,7 +79,9 @@ def start(
         import yaml
         raw = yaml.safe_load(config_file.read_text()) or {}
         raw.setdefault("platform", {})["primary"] = "web"
-        config_file.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        config_file.write_text(
+            yaml.dump(raw, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        )
 
     console.print(Panel.fit(
         "[bold green]Starting open_intern[/bold green]",
@@ -117,7 +121,9 @@ def status(
     table.add_row("LLM", f"{config.llm.provider}:{config.llm.model}")
     table.add_row("Daily Budget", f"${config.llm.daily_cost_budget_usd:.2f}")
     table.add_row("Proactivity", "Enabled" if config.behavior.proactivity.enabled else "Disabled")
-    table.add_row("Database", config.memory.database_url.split("@")[-1] if "@" in config.memory.database_url else config.memory.database_url)
+    db_url = config.memory.database_url
+    db_display = db_url.split("@")[-1] if "@" in db_url else db_url
+    table.add_row("Database", db_display)
 
     console.print(table)
 
@@ -182,8 +188,8 @@ def chat(
     ),
 ):
     """Interactive chat with the agent (no platform needed)."""
-    from core.config import load_config
     from core.agent import OpenInternAgent
+    from core.config import load_config
 
     config = load_config(config_path)
     console.print(Panel.fit(

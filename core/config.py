@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -74,10 +73,20 @@ class BehaviorConfig(BaseModel):
 
 class SafetyConfig(BaseModel):
     require_approval_for: list[str] = Field(
-        default_factory=lambda: ["send_email", "create_pr", "post_public_channel", "delete_anything"]
+        default_factory=lambda: [
+            "send_email",
+            "create_pr",
+            "post_public_channel",
+            "delete_anything",
+        ]
     )
     auto_allow: list[str] = Field(
-        default_factory=lambda: ["read_channel", "respond_to_mention", "respond_to_dm", "internal_note"]
+        default_factory=lambda: [
+            "read_channel",
+            "respond_to_mention",
+            "respond_to_dm",
+            "internal_note",
+        ]
     )
 
 

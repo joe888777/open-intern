@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.config import AppConfig, IdentityConfig, LLMConfig, load_config
-from memory.store import MemoryEntry, MemoryRecord, MemoryScope, MemoryStore
+from core.config import AppConfig, IdentityConfig, LLMConfig
+from memory.store import MemoryRecord, MemoryScope, MemoryStore
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -163,7 +161,8 @@ def _generate_thread_title(user_message: str, agent_response: str) -> str:
         from core.agent import _create_llm
         llm = _create_llm(_agent.config)
         result = llm.invoke(
-            f"Generate a very short title (max 6 words, no quotes) for a conversation that starts with:\n"
+            "Generate a very short title (max 6 words, no quotes) "
+            "for a conversation that starts with:\n"
             f"User: {user_message[:200]}\n"
             f"Reply in the same language as the user message."
         )
@@ -187,18 +186,16 @@ def list_threads():
         return {"threads": []}
     checkpointer = _agent._checkpointer
     threads: dict[str, dict] = {}
-    for (thread_id, _ns), _cp_id in checkpointer.storage.items():
+    for key in checkpointer.storage.keys():
+        # Key can be a string (thread_id) or tuple (thread_id, namespace)
+        thread_id = key[0] if isinstance(key, tuple) else key
         if thread_id not in threads:
             meta = _thread_meta.get(thread_id, {})
-            latest_key = max(_cp_id.keys())
-            cp_data = _cp_id[latest_key]
-            checkpoint = cp_data[0]
             threads[thread_id] = {
                 "thread_id": thread_id,
                 "title": meta.get("title", ""),
-                "created_at": meta.get("created_at", checkpoint.get("ts", "")),
+                "created_at": meta.get("created_at", ""),
             }
-    # Sort by created_at descending
     sorted_threads = sorted(threads.values(), key=lambda t: t["created_at"], reverse=True)
     return {"threads": sorted_threads}
 

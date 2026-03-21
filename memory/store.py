@@ -10,7 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Index, String, Text, Float, create_engine, text
+from sqlalchemy import Column, DateTime, Float, Index, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 logger = logging.getLogger(__name__)
