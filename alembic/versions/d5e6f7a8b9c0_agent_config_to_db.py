@@ -24,35 +24,61 @@ branch_labels = None
 depends_on = None
 
 
+def _col_exists(table, column):
+    """Check if a column already exists in a table."""
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :table AND column_name = :col"
+        ),
+        {"table": table, "col": column},
+    )
+    return result.fetchone() is not None
+
+
 def _add_col(name, col_type, default=""):
-    """Helper to add a column with server_default."""
+    """Helper to add a column with server_default (skip if exists)."""
+    if _col_exists("agents", name):
+        return
     op.add_column(
         "agents",
         sa.Column(name, col_type, server_default=default, nullable=False),
     )
 
 
+def _table_exists(table):
+    """Check if a table already exists."""
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text("SELECT 1 FROM information_schema.tables WHERE table_name = :table"),
+        {"table": table},
+    )
+    return result.fetchone() is not None
+
+
 def upgrade() -> None:
     # --- Create system_settings table ---
-    op.create_table(
-        "system_settings",
-        sa.Column("key", sa.String(), nullable=False),
-        sa.Column("value", sa.Text(), nullable=False, server_default=""),
-        sa.Column(
-            "is_secret",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("false"),
-        ),
-        sa.Column("description", sa.Text(), nullable=False, server_default=""),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.PrimaryKeyConstraint("key"),
-    )
+    if not _table_exists("system_settings"):
+        op.create_table(
+            "system_settings",
+            sa.Column("key", sa.String(), nullable=False),
+            sa.Column("value", sa.Text(), nullable=False, server_default=""),
+            sa.Column(
+                "is_secret",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
+            sa.Column("description", sa.Text(), nullable=False, server_default=""),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.PrimaryKeyConstraint("key"),
+        )
 
     # --- Add new columns to agents ---
 
@@ -82,28 +108,34 @@ def upgrade() -> None:
     _add_col("importance_decay_days", sa.Integer(), "90")
 
     # --- Migrate telegram_token -> telegram_token_encrypted ---
-    encryption_key = os.environ.get("ENCRYPTION_KEY", "")
-    if encryption_key:
-        from cryptography.fernet import Fernet
+    if _col_exists("agents", "telegram_token"):
+        encryption_key = os.environ.get("ENCRYPTION_KEY", "")
+        if encryption_key:
+            from cryptography.fernet import Fernet
 
-        f = Fernet(encryption_key.encode())
-        conn = op.get_bind()
-        rows = conn.execute(
-            sa.text("SELECT agent_id, telegram_token FROM agents WHERE telegram_token != ''")
-        ).fetchall()
-        for row in rows:
-            encrypted = f.encrypt(row[1].encode()).decode()
-            conn.execute(
-                sa.text("UPDATE agents SET telegram_token_encrypted = :enc WHERE agent_id = :aid"),
-                {"enc": encrypted, "aid": row[0]},
+            f = Fernet(encryption_key.encode())
+            conn = op.get_bind()
+            rows = conn.execute(
+                sa.text("SELECT agent_id, telegram_token FROM agents WHERE telegram_token != ''")
+            ).fetchall()
+            for row in rows:
+                encrypted = f.encrypt(row[1].encode()).decode()
+                conn.execute(
+                    sa.text(
+                        "UPDATE agents SET telegram_token_encrypted = :enc WHERE agent_id = :aid"
+                    ),
+                    {"enc": encrypted, "aid": row[0]},
+                )
+        else:
+            op.execute(
+                "UPDATE agents "
+                "SET telegram_token_encrypted = telegram_token "
+                "WHERE telegram_token != ''"
             )
-    else:
-        op.execute(
-            "UPDATE agents SET telegram_token_encrypted = telegram_token WHERE telegram_token != ''"
-        )
 
     # Drop the old plaintext column
-    op.drop_column("agents", "telegram_token")
+    if _col_exists("agents", "telegram_token"):
+        op.drop_column("agents", "telegram_token")
 
 
 def downgrade() -> None:
