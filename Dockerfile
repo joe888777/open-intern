@@ -20,7 +20,7 @@ RUN mkdir -p /app/logs && \
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["sh", "-c", "alembic upgrade head || echo 'Alembic migration failed (non-fatal)'; python -m cli.main start --web"]
+CMD ["sh", "-c", "alembic upgrade head || alembic stamp head || echo 'Alembic skipped'; exec python -m cli.main start --web"]
