@@ -715,6 +715,7 @@ def _get_scheduler():
 
 
 _VALID_SCHEDULE_TYPES = {"cron", "interval", "once"}
+_VALID_DELIVERY_PLATFORMS = {"", "telegram", "discord"}
 
 
 class ScheduledJobCreate(BaseModel):
@@ -725,6 +726,8 @@ class ScheduledJobCreate(BaseModel):
     prompt: str
     timezone: str = "UTC"
     channel_id: str = ""
+    delivery_platform: str = ""
+    delivery_chat_id: str = ""
     isolated: bool = False
 
     @field_validator("schedule_type")
@@ -732,6 +735,13 @@ class ScheduledJobCreate(BaseModel):
     def check_schedule_type(cls, v: str) -> str:
         if v not in _VALID_SCHEDULE_TYPES:
             raise ValueError("schedule_type must be 'cron', 'interval', or 'once'")
+        return v
+
+    @field_validator("delivery_platform")
+    @classmethod
+    def check_delivery_platform(cls, v: str) -> str:
+        if v not in _VALID_DELIVERY_PLATFORMS:
+            raise ValueError("delivery_platform must be '', 'telegram', or 'discord'")
         return v
 
 
@@ -742,6 +752,8 @@ class ScheduledJobUpdate(BaseModel):
     timezone: str | None = None
     prompt: str | None = None
     channel_id: str | None = None
+    delivery_platform: str | None = None
+    delivery_chat_id: str | None = None
     isolated: bool | None = None
     enabled: bool | None = None
 
@@ -772,6 +784,8 @@ async def create_scheduled_job(body: ScheduledJobCreate):
             prompt=body.prompt,
             tz=body.timezone,
             channel_id=body.channel_id,
+            delivery_platform=body.delivery_platform,
+            delivery_chat_id=body.delivery_chat_id,
             isolated=body.isolated,
         )
         return result
