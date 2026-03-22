@@ -104,9 +104,9 @@ export default function StatusPage() {
             <CardTitle className="text-sm text-muted-foreground">Memories</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{status.memory_stats.total}</p>
+            <p className="text-2xl font-bold">{status.memory_stats?.total ?? 0}</p>
             <p className="text-xs text-muted-foreground">
-              {status.memory_stats.shared} shared / {status.memory_stats.channel} channel / {status.memory_stats.personal} personal
+              {status.memory_stats?.shared ?? 0} shared / {status.memory_stats?.channel ?? 0} channel / {status.memory_stats?.personal ?? 0} personal
             </p>
           </CardContent>
         </Card>
