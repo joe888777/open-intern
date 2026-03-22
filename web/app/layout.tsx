@@ -28,17 +28,15 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const token = cookieStore.get("oi_token")?.value;
-  const legacySession = cookieStore.get("oi_session")?.value;
-  const isAuthenticated = !!token || !!legacySession;
 
   // Decode user role for nav sidebar
   let userRole: "admin" | "user" | null = null;
   if (token) {
     const decoded = decodeJWT(token);
     if (decoded) userRole = decoded.role;
-  } else if (legacySession) {
-    userRole = "admin"; // Legacy sessions are admin
   }
+
+  const isAuthenticated = !!token && !!userRole;
 
   return (
     <html

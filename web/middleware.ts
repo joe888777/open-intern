@@ -10,12 +10,10 @@ export async function middleware(request: NextRequest) {
   // Check JWT token cookie
   const token = request.cookies.get("oi_token")?.value;
   if (!token) {
-    // Check legacy cookie for backward compat
-    const legacySession = request.cookies.get("oi_session")?.value;
-    if (!legacySession) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-    return NextResponse.next();
+    // No valid JWT — clear any stale legacy cookie and redirect to login
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.delete("oi_session");
+    return response;
   }
 
   // Validate JWT structure and expiry (edge-compatible)
