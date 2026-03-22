@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || "";
-
 export async function middleware(request: NextRequest) {
+  // Read at invocation time (not module level) so runtime env vars work
+  const dashboardPassword = process.env.DASHBOARD_PASSWORD || "";
+
   // No password set = no auth required (local dev)
-  if (!DASHBOARD_PASSWORD) {
+  if (!dashboardPassword) {
     return NextResponse.next();
   }
 
