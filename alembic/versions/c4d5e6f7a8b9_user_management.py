@@ -1,7 +1,7 @@
 """Add users, user_agent_access, and token_usage tables.
 
-Revision ID: c3d4e5f6a7b8
-Revises: b2c3d4e5f6a7
+Revision ID: c4d5e6f7a8b9
+Revises: e5f6a7b8c9d0
 Create Date: 2026-03-22 00:00:00.000000
 """
 
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "c3d4e5f6a7b8"
-down_revision = "b2c3d4e5f6a7"
+revision = "c4d5e6f7a8b9"
+down_revision = "e5f6a7b8c9d0"
 branch_labels = None
 depends_on = None
 
