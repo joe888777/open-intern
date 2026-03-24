@@ -187,36 +187,29 @@ class OpenInternAgent:
         memory_tools = create_memory_tools(self.memory_store)
         all_tools = memory_tools + self.extra_tools
 
-        # Create async checkpointer + store for conversation threading (PostgreSQL)
-        # initialize() is called before the event loop starts, so asyncio.run() is safe.
+        # Create checkpointer for conversation threading (persisted to PostgreSQL).
+        # Uses sync PostgresSaver — ainvoke() handles sync checkpointers via thread pool.
+        from langgraph.checkpoint.postgres import PostgresSaver
+        from psycopg import Connection
+        from psycopg.rows import dict_row
 
-        async def _setup_async_pg():
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            from langgraph.store.postgres import AsyncPostgresStore
-            from psycopg import AsyncConnection
-            from psycopg.rows import dict_row
+        self._checkpoint_conn = Connection.connect(
+            self.config.database_url,
+            autocommit=True,
+            prepare_threshold=0,
+            row_factory=dict_row,
+        )
+        self._checkpointer = PostgresSaver(self._checkpoint_conn)
+        self._checkpointer.setup()
+        logger.info("Checkpointer ready (PostgreSQL)")
 
-            conn = await AsyncConnection.connect(
-                self.config.database_url,
-                autocommit=True,
-                prepare_threshold=0,
-                row_factory=dict_row,
-            )
-            checkpointer = AsyncPostgresSaver(conn)
-            await checkpointer.setup()
+        # Create PostgresStore for persistent file storage
+        from langgraph.store.postgres import PostgresStore
 
-            store_ctx = AsyncPostgresStore.from_conn_string(self.config.database_url)
-            store = await store_ctx.__aenter__()
-            await store.setup()
-            return conn, checkpointer, store_ctx, store
-
-        (
-            self._checkpoint_conn,
-            self._checkpointer,
-            self._store_ctx,
-            self._postgres_store,
-        ) = asyncio.run(_setup_async_pg())
-        logger.info("Async checkpointer + store ready (PostgreSQL)")
+        self._store_ctx = PostgresStore.from_conn_string(self.config.database_url)
+        self._postgres_store = self._store_ctx.__enter__()
+        self._postgres_store.setup()
+        logger.info("PostgresStore ready")
 
         # Seed skills from disk into PostgresStore (used by none mode and as source for E2B seeding)
         from scripts.seed_skills import seed_skills
