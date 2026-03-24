@@ -7,7 +7,7 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -470,7 +470,7 @@ async def read_file(
     agent_id: str,
     path: str,
     offset: int = 0,
-    limit: int = Field(default=2000, ge=1, le=100_000),
+    limit: int = Query(default=2000, ge=1, le=100_000),
     user: dict = Depends(get_current_user),
 ):
     """Read a file from the sandbox."""
