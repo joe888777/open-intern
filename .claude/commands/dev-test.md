@@ -77,6 +77,17 @@ Full development workflow: clarify → worktree → implement → test → PR �
     ```
 23. **Report** — Summarize what was done, link to merged PR.
 
+## Phase 7: Retrospective
+
+24. **Self-review** — After merge, reflect on the process:
+    - **What went well?** — Approaches that worked, good decisions made
+    - **What went wrong?** — Mistakes, wasted time, wrong assumptions
+    - **Root cause** — Why did the issues happen? (not just what)
+    - **Process improvement** — What concrete change would prevent this next time?
+    - **Risk assessment** — Did any action cause more harm than the original problem?
+25. **Save learnings** — If any insight is non-obvious and useful for future work, save to memory (feedback type). Don't save trivial or one-off observations.
+26. **Share with user** — Present findings concisely. Focus on actionable improvements, not just observations.
+
 ## Important Notes
 
 - Backend API runs on port **8000**, web dashboard on port **3000**
