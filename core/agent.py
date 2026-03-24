@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -187,8 +186,7 @@ class OpenInternAgent:
         memory_tools = create_memory_tools(self.memory_store)
         all_tools = memory_tools + self.extra_tools
 
-        # Create checkpointer for conversation threading (persisted to PostgreSQL).
-        # Uses sync PostgresSaver — ainvoke() handles sync checkpointers via thread pool.
+        # Create checkpointer for conversation threading (persisted to PostgreSQL)
         from langgraph.checkpoint.postgres import PostgresSaver
         from psycopg import Connection
         from psycopg.rows import dict_row
@@ -435,8 +433,11 @@ class OpenInternAgent:
         if thread_id:
             await self._maybe_compact(invoke_config)
 
-        # Invoke the agent asynchronously (async checkpointer + async tool support)
-        result = await self._agent.ainvoke(
+        # Invoke the agent in a thread pool (checkpointer doesn't support async)
+        import asyncio
+
+        result = await asyncio.to_thread(
+            self._agent.invoke,
             {"messages": [{"role": "user", "content": enriched_message}]},
             invoke_config,
         )
@@ -560,9 +561,11 @@ class OpenInternAgent:
             return
 
         # Get final state for token usage
+        import asyncio
+
         try:
             final_state = await asyncio.wait_for(
-                self._agent.aget_state(invoke_config),
+                asyncio.to_thread(self._agent.get_state, invoke_config),
                 timeout=30.0,
             )
         except TimeoutError:
@@ -587,6 +590,8 @@ class OpenInternAgent:
 
     async def _maybe_compact(self, invoke_config: dict) -> None:
         """Check if conversation needs compaction and perform it if so."""
+        import asyncio
+
         thread_id = invoke_config.get("configurable", {}).get("thread_id")
         if not thread_id:
             return
@@ -605,8 +610,10 @@ class OpenInternAgent:
 
     async def _do_compact(self, invoke_config: dict) -> None:
         """Perform the actual compaction (called under lock)."""
+        import asyncio
+
         try:
-            state = await self._agent.aget_state(invoke_config)
+            state = await asyncio.to_thread(self._agent.get_state, invoke_config)
             if not state or not state.values:
                 return
 
@@ -634,7 +641,11 @@ class OpenInternAgent:
                 )
 
             # Update the checkpoint with compacted messages
-            await self._agent.aupdate_state(invoke_config, {"messages": new_messages})
+            await asyncio.to_thread(
+                self._agent.update_state,
+                invoke_config,
+                {"messages": new_messages},
+            )
             logger.info(f"Compaction complete: {len(messages)} -> {len(new_messages)} messages")
 
         except Exception as e:
