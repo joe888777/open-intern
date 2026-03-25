@@ -108,6 +108,7 @@ class Integration(ABC):
             logger.exception(f"Agent chat failed for event from {event.platform}")
             last_exc = exc
             ERROR_TOTAL.labels(category="platform").inc()
+            _sentry_capture(exc, event)
             # Retry with a fresh thread — corrupted checkpointer state
             # (e.g. orphaned tool calls, duplicate system messages) can cause
             # persistent failures on a thread.  A fresh thread_id gives the
@@ -192,3 +193,35 @@ class Integration(ABC):
     def _is_self(self, event: ChatEvent) -> bool:
         """Check if the event was sent by this bot."""
         ...
+
+
+def _hash_id(value: str) -> str:
+    """One-way hash to strip PII before sending to Sentry."""
+    import hashlib
+
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
+
+
+def _sentry_capture(exc: Exception, event: ChatEvent) -> None:
+    """Report an exception to Sentry with platform context (no-op if disabled)."""
+    try:
+        from core.sentry import is_sentry_enabled
+
+        if not is_sentry_enabled():
+            return
+        import sentry_sdk
+
+        with sentry_sdk.push_scope() as scope:
+            scope.set_tag("platform", event.platform)
+            scope.set_tag("event_type", event.event_type)
+            scope.set_context(
+                "chat_event",
+                {
+                    "channel_id": _hash_id(event.channel_id),
+                    "user_id": _hash_id(event.user_id),
+                    "is_dm": event.is_dm,
+                },
+            )
+            sentry_sdk.capture_exception(exc)
+    except Exception:
+        logger.warning("Sentry capture failed", exc_info=True)
