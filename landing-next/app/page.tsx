@@ -17,7 +17,7 @@ export default function Home() {
 
       <div className="container">
         <section className="hero">
-          <img src="/avatar.png" alt="Open Intern" width={80} height={80} style={{ borderRadius: "50%", marginBottom: 24 }} />
+          <img src="/avatar.png" alt="Open Intern" width={160} height={160} style={{ borderRadius: "50%", marginBottom: 32 }} />
           <h1>An AI that actually<br />works here.</h1>
           <p>Open-source AI employee that joins your team as a real colleague — with its own identity, memory, and judgment.</p>
           <div className="cta">
