@@ -118,18 +118,52 @@ class TestCronSchedulerJobToDict:
 class TestSchedulerTools:
     """Test that scheduler tools are properly created."""
 
-    def test_creates_five_tools(self):
+    def test_creates_six_tools(self):
         scheduler = MagicMock(spec=CronScheduler)
         tools = create_scheduler_tools(scheduler, "test-agent")
-        assert len(tools) == 5
+        assert len(tools) == 6
         names = {t.name for t in tools}
         assert names == {
             "create_scheduled_job",
             "list_scheduled_jobs",
+            "update_scheduled_job",
             "delete_scheduled_job",
             "pause_scheduled_job",
             "resume_scheduled_job",
         }
+
+    def test_update_tool_filters_empty_values(self):
+        sched = MagicMock(spec=CronScheduler)
+        sched.update_job.return_value = {"id": "abc-123", "name": "test"}
+        tools = create_scheduler_tools(sched, "test-agent")
+        update_tool = next(t for t in tools if t.name == "update_scheduled_job")
+        result = update_tool.func(job_id="abc-123", name="new-name")
+        sched.update_job.assert_called_once_with("abc-123", name="new-name")
+        assert "Updated" in result
+
+    def test_update_tool_no_fields_returns_error(self):
+        sched = MagicMock(spec=CronScheduler)
+        tools = create_scheduler_tools(sched, "test-agent")
+        update_tool = next(t for t in tools if t.name == "update_scheduled_job")
+        result = update_tool.func(job_id="abc-123")
+        assert "No fields to update" in result
+        sched.update_job.assert_not_called()
+
+    def test_update_tool_invalid_schedule_type(self):
+        sched = MagicMock(spec=CronScheduler)
+        tools = create_scheduler_tools(sched, "test-agent")
+        update_tool = next(t for t in tools if t.name == "update_scheduled_job")
+        result = update_tool.func(job_id="abc-123", schedule_type="invalid")
+        assert "Invalid schedule_type" in result
+        sched.update_job.assert_not_called()
+
+    def test_update_tool_invalid_delivery_platform(self):
+        sched = MagicMock(spec=CronScheduler)
+        tools = create_scheduler_tools(sched, "test-agent")
+        update_tool = next(t for t in tools if t.name == "update_scheduled_job")
+        result = update_tool.func(job_id="abc-123", delivery_platform="whatsapp")
+        assert "Invalid delivery_platform" in result
+        sched.update_job.assert_not_called()
 
 
 @pytest.mark.anyio
